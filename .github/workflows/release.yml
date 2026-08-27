@@ -10,7 +10,33 @@ on:
 permissions:
   contents: write
 jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install curl
+        run: sudo apt-get update && sudo apt-get install -y curl
+      - name: Build and smoke-test daemon + public API
+        run: |
+          make clean
+          make CFLAGS='-std=c11 -O2 -Wall -Wextra -Wpedantic -D_POSIX_C_SOURCE=200809L'
+          ./qemu-web-manager --port 18091 --public public >/tmp/test.log 2>&1 &
+          PID=$!
+          sleep 1
+          curl -sf http://127.0.0.1:18091/api/v1/health
+          echo
+          curl -sf http://127.0.0.1:18091/api/v1/telemetry
+          echo
+          curl -sf http://127.0.0.1:18091/
+          kill $PID
+          rm -f qemu-web-manager src/*.o
+      - uses: actions/upload-artifact@v4
+        with:
+          name: test-log
+          path: /tmp/test.log
+
   build:
+    needs: test
     strategy:
       fail-fast: false
       matrix:

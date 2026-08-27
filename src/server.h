@@ -4,5 +4,8 @@
  */
 #ifndef QWM_SERVER_H
 #define QWM_SERVER_H
+
+/* Returns 0 on clean shutdown, nonzero on fatal start error. */
 int server_run(int port, const char *public_dir);
+
 #endif
