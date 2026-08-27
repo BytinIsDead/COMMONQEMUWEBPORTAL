@@ -14,7 +14,7 @@ OBJECTS := $(SOURCES:.c=.o)
 all: $(TARGET)
 
 $(TARGET): $(OBJECTS)
-	$(CC) $(LDFLAGS) -o $@ $(OBJECTS)
+	$(CC) -o $@ $(OBJECTS) $(LDFLAGS)
 
 %.o: %.c
 	$(CC) $(CFLAGS) -Isrc -c $< -o $@

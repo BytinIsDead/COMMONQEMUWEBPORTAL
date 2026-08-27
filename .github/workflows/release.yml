@@ -50,9 +50,11 @@ jobs:
             cc: aarch64-linux-gnu-gcc
             ldflags: ''
           - name: windows-x86_64
-            runner: ubuntu-24.04
+            runner: windows-2025
             cc: x86_64-w64-mingw32-gcc
+            cflags: '-std=c11 -O2 -Wall -Wextra -Wpedantic -D_POSIX_C_SOURCE=200809L'
             ldflags: '-lws2_32'
+            msys2: true
           - name: macos-x86_64
             runner: macos-14
             cc: clang
@@ -70,12 +72,25 @@ jobs:
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
-      - name: Install cross toolchains
+      - name: Install cross toolchains (Linux)
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y build-essential mingw-w64 gcc-aarch64-linux-gnu clang
-      - name: Build
+      - name: Set up MSYS2 (Windows)
+        if: runner.os == 'Windows'
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            base-devel
+            mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-make
+            mingw-w64-x86_64-curl
+      - name: Build (Windows, MSYS2)
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
         env:
           CC: ${{ matrix.cc }}
           QWM_CFLAGS: ${{ matrix.cflags || '-std=c11 -O2 -Wall -Wextra -Wpedantic -D_POSIX_C_SOURCE=200809L' }}
@@ -83,7 +98,29 @@ jobs:
         run: |
           make clean || true
           make CFLAGS="$QWM_CFLAGS" LDFLAGS="$QWM_LDFLAGS"
+      - name: Build
+        if: runner.os != 'Windows'
+        shell: bash
+        env:
+          CC: ${{ matrix.cc }}
+          QWM_CFLAGS: ${{ matrix.cflags || '-std=c11 -O2 -Wall -Wextra -Wpedantic -D_POSIX_C_SOURCE=200809L' }}
+          QWM_LDFLAGS: ${{ matrix.ldflags || '' }}
+        run: |
+          make clean || true
+          make CFLAGS="$QWM_CFLAGS" LDFLAGS="$QWM_LDFLAGS"
+      - name: Package (Windows, MSYS2)
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        run: |
+          set -euo pipefail
+          name='qemu-web-manager-${{ matrix.name }}'
+          mkdir -p "$name/public"
+          cp qemu-web-manager "$name/" 2>/dev/null || cp qemu-web-manager.exe "$name/" 2>/dev/null || true
+          cp public/* "$name/public/"
+          cp LICENSE LICENSE.md README.md ARCHITECTURE.md HARDWARE_MATRIX.md "$name/"
+          cd "$name" && tar -czf "../$name.tar.gz" .
       - name: Package
+        if: runner.os != 'Windows'
         shell: bash
         run: |
           set -euo pipefail
