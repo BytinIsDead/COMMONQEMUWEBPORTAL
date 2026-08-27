@@ -1,32 +1,32 @@
 // Extreme QEMU Web Manager — AGPL-3.0-or-later
 // Copyright (C) 2026 Extreme QEMU Web Manager contributors.
-// Licensed under the GNU Affero General Public License version 3 or later.
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Affero General Public License as published
+// by the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
 
-const source = document.querySelector('.source');
-const stateBadge = document.querySelector('h1 mark');
-const stopButton = document.querySelector('.danger');
-const qmpButton = document.querySelector('.ghost');
-const machineId = 'lab-x86';
+const id = 'lab-x86';
+const badge = document.querySelector('h1 mark');
+const consoleOutput = document.querySelector('pre');
+const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
 
 function connectEvents() {
-  const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-  const socket = new WebSocket(`${protocol}//${location.host}/api/v1/machines/${machineId}/events`);
+  const socket = new WebSocket(`${protocol}//${location.host}/api/v1/machines/${id}/events`);
   socket.onmessage = ({ data }) => {
-    try {
-      const event = JSON.parse(data);
-      if (event.state && stateBadge) stateBadge.textContent = event.state.toUpperCase();
-    } catch (_) { /* Ignore malformed telemetry frames. */ }
+    const event = JSON.parse(data);
+    if (badge && event.state) badge.textContent = event.state.toUpperCase();
   };
   socket.onclose = () => setTimeout(connectEvents, 3000);
 }
 
-stopButton?.addEventListener('click', async () => {
-  await fetch(`/api/v1/machines/${machineId}/stop`, { method: 'POST' });
+document.querySelector('.danger')?.addEventListener('click', async () => {
+  await fetch(`/api/v1/machines/${id}/stop`, { method: 'POST' });
 });
-qmpButton?.addEventListener('click', async () => {
-  const response = await fetch(`/api/v1/machines/${machineId}/qmp`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({execute: 'query-status'}) });
+document.querySelector('.ghost')?.addEventListener('click', async () => {
+  const response = await fetch(`/api/v1/machines/${id}/qmp`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ execute: 'query-status' }) });
   const result = await response.json();
-  window.alert(JSON.stringify(result, null, 2));
+  if (consoleOutput) consoleOutput.textContent += `\nQMP: ${JSON.stringify(result)}`;
 });
-if (source) source.setAttribute('title', 'AGPLv3 Section 13 corresponding source');
-if (location.protocol === 'http:' || location.protocol === 'https:') connectEvents();
+if (consoleOutput) consoleOutput.setAttribute('aria-label', 'Serial console output');
+connectEvents();

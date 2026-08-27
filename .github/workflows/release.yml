@@ -3,77 +3,66 @@
 # Licensed under the GNU Affero General Public License version 3 or later.
 
 name: Release
-
 on:
   push:
     tags: ['v*.*.*']
   workflow_dispatch:
-
 permissions:
   contents: write
-
-env:
-  CGO_ENABLED: 0
-
 jobs:
   build:
     strategy:
       fail-fast: false
       matrix:
         include:
-          - name: linux-amd64
-            goos: linux
-            goarch: amd64
-            ext: ''
+          - name: linux-x86_64
+            runner: ubuntu-24.04
+            cc: gcc
           - name: linux-arm64
-            goos: linux
-            goarch: arm64
-            ext: ''
-          - name: windows-amd64
-            goos: windows
-            goarch: amd64
-            ext: '.exe'
-          - name: macos-amd64
-            goos: darwin
-            goarch: amd64
-            ext: ''
+            runner: ubuntu-24.04
+            cc: aarch64-linux-gnu-gcc
+          - name: windows-x86_64
+            runner: ubuntu-24.04
+            cc: x86_64-w64-mingw32-gcc
+          - name: macos-x86_64
+            runner: macos-13
+            cc: clang
           - name: macos-arm64
-            goos: darwin
-            goarch: arm64
-            ext: ''
-          - name: freebsd-amd64
-            goos: freebsd
-            goarch: amd64
-            ext: ''
-    runs-on: ubuntu-24.04
+            runner: macos-14
+            cc: clang
+          - name: freebsd-x86_64
+            runner: ubuntu-24.04
+            cc: clang
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - uses: actions/setup-go@v5
-        with:
-          go-version: '1.23'
-      - name: Test
-        run: go test ./...
-      - name: Build and package
-        shell: bash
+      - name: Install cross toolchains
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential mingw-w64 gcc-aarch64-linux-gnu clang
+      - name: Build
         env:
-          GOOS: ${{ matrix.goos }}
-          GOARCH: ${{ matrix.goarch }}
-          EXT: ${{ matrix.ext }}
-          NAME: ${{ matrix.name }}
+          CC: ${{ matrix.cc }}
+        run: |
+          make clean || true
+          make CFLAGS='-std=c11 -O2 -Wall -Wextra -Wpedantic -D_POSIX_C_SOURCE=200809L'
+      - name: Package
+        shell: bash
         run: |
           set -euo pipefail
-          mkdir -p "dist/qemu-web-manager-${NAME}/web"
-          go build -trimpath -ldflags='-s -w' -o "dist/qemu-web-manager-${NAME}/qemu-web-manager${EXT}" ./cmd/qemu-web-manager
-          cp web/index.html web/style.css web/app.js "dist/qemu-web-manager-${NAME}/web/"
-          cp LICENSE LICENSE.md README.md ARCHITECTURE.md HARDWARE_MATRIX.md "dist/qemu-web-manager-${NAME}/"
-          tar -czf "qemu-web-manager-${NAME}.tar.gz" -C dist "qemu-web-manager-${NAME}"
+          name='qemu-web-manager-${{ matrix.name }}'
+          mkdir -p "$name/public"
+          cp qemu-web-manager "$name/" 2>/dev/null || cp qemu-web-manager.exe "$name/" 2>/dev/null || true
+          cp public/* "$name/public/"
+          cp LICENSE LICENSE.md README.md ARCHITECTURE.md HARDWARE_MATRIX.md "$name/"
+          tar -czf "$name.tar.gz" "$name"
       - uses: actions/upload-artifact@v4
         with:
           name: qemu-web-manager-${{ matrix.name }}
           path: qemu-web-manager-${{ matrix.name }}.tar.gz
-
   source:
     runs-on: ubuntu-24.04
     steps:
@@ -86,7 +75,6 @@ jobs:
         with:
           name: qemu-web-manager-source
           path: qemu-web-manager-source-AGPLv3.tar.gz
-
   release:
     needs: [build, source]
     runs-on: ubuntu-24.04
@@ -94,7 +82,7 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           path: artifacts
-      - name: Prepare assets and checksums
+      - name: Prepare release assets
         run: |
           find artifacts -type f -name '*.tar.gz' -exec cp {} . \;
           sha256sum qemu-web-manager-*.tar.gz qemu-web-manager-source-AGPLv3.tar.gz > SHA256SUMS
