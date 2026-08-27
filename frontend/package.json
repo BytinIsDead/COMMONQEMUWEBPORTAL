@@ -1,0 +1,11 @@
+{
+  "name": "extreme-qemu-web-manager-ui",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc app.ts --target ES2022 --module ES2022 --moduleResolution bundler --outDir dist"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.2"
+  }
+}
