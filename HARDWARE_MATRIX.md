@@ -1,85 +1,71 @@
 # Hardware Matrix
 
-Support is capability-driven: the daemon discovers the installed QEMU binary and host backend before enabling controls.
+The manager exposes controls only after querying the selected host's QEMU binary with `-accel help`, `-machine help`, and `-device help`.
 
-## Target architectures
+## Guest targets
 
-| Guest target | QEMU binary | Typical machine families |
+| Target | Binary | Representative machine types |
 |---|---|---|
-| x86_64 | qemu-system-x86_64 | pc, q35 |
-| i386 | qemu-system-i386 | pc, isapc |
-| PPC/PPC64 | qemu-system-ppc, qemu-system-ppc64 | mac99, pseries, prep |
-| SPARC/SPARC64 | qemu-system-sparc, qemu-system-sparc64 | sun4m, sun4u |
-| MIPS/MIPS64 | qemu-system-mips, qemu-system-mips64 | malta, mips |
-| ARM/ARM64 | qemu-system-arm, qemu-system-aarch64 | virt, raspi, versatile |
-| m68k | qemu-system-m68k | q800 |
-| Alpha | qemu-system-alpha | clipper |
-| RISC-V | qemu-system-riscv64 | virt |
+| x86_64 | `qemu-system-x86_64` | `pc`, `q35` |
+| i386 | `qemu-system-i386` | `pc`, `isapc` |
+| PPC/PPC64 | `qemu-system-ppc`, `qemu-system-ppc64` | `mac99`, `pseries`, `prep` |
+| SPARC/SPARC64 | `qemu-system-sparc`, `qemu-system-sparc64` | `sun4m`, `sun4u` |
+| MIPS/MIPS64 | `qemu-system-mips`, `qemu-system-mips64` | `malta` |
+| ARM/ARM64 | `qemu-system-arm`, `qemu-system-aarch64` | `virt`, `versatile`, board-specific |
+| m68k | `qemu-system-m68k` | `q800` |
+| Alpha | `qemu-system-alpha` | `clipper` |
+| RISC-V | `qemu-system-riscv64` | `virt` |
 
-Exact machine types must be queried from `-machine help` on the selected host.
+Machine availability varies by QEMU build and must not be hard-coded as universally supported.
 
 ## Acceleration
 
-| Backend | CLI | Platform | Notes |
-|---|---|---|---|
-| KVM | `-accel kvm` | Linux | Requires `/dev/kvm`, permissions, and compatible guest/host setup |
-| WHPX | `-accel whpx` | Windows | Requires Windows Hypervisor Platform |
-| HVF | `-accel hvf` | macOS | Requires Hypervisor.framework and supported hardware |
-| NVMM | `-accel nvmm` | NetBSD | Requires NVMM-enabled kernel/QEMU |
-| TCG | `-accel tcg` | All | Portable fallback; apply explicit CPU/resource policy |
-
-Threading and execution-speed controls must be emitted only when supported by the installed QEMU version. Unsupported speed flags must fail validation rather than be silently ignored.
-
-## Storage and buses
-
-| Device family | Examples | QEMU strategy |
+| Backend | CLI | Host |
 |---|---|---|
-| IDE | PIIX3, PIIX4 | `-drive if=ide` or explicit controller/device |
-| SCSI | virtio-scsi, LSI 53C895A | controller plus SCSI drive attachment |
-| NVMe | emulated NVMe | `-drive if=none` plus `nvme` device |
-| Floppy | FDC | `-drive if=floppy` |
-| SD | SD card image | machine/device-specific SD attachment |
-| Virtio block | virtio-blk | preferred for modern guests |
+| KVM | `-accel kvm` | Linux with `/dev/kvm` |
+| WHPX | `-accel whpx` | Windows Hypervisor Platform |
+| HVF | `-accel hvf` | macOS Hypervisor.framework |
+| NVMM | `-accel nvmm` | BSD hosts where enabled |
+| TCG | `-accel tcg` | Portable fallback |
 
-Modern builds should prefer `-blockdev` plus explicit `-device` nodes for stable node names, snapshots, and safe hotplug operations.
+TCG controls should expose threading and resource throttling only when supported by the installed QEMU version. Unsupported options must produce validation errors.
+
+## Storage buses
+
+| Bus/controller | Typical QEMU representation |
+|---|---|
+| IDE PIIX3/PIIX4 | `-drive if=ide` or explicit controller/device |
+| virtio-scsi | `virtio-scsi` controller plus SCSI disk |
+| LSI 53C895A | `lsi53c895a` controller plus SCSI disk |
+| NVMe | `-drive if=none` plus NVMe device |
+| Floppy/FDC | `-drive if=floppy` |
+| SD | machine-specific SD device and raw image |
+| Virtio block | explicit `virtio-blk` device; preferred modern path |
+
+Use `-blockdev` graphs for production hotplug and snapshot workflows.
 
 ## Display
 
-Supported requested models:
+Requested guest display models:
 
 ```text
 virtio-vga · std · cirrus · qxl · bochs
 ```
 
-The UI must query `-device help` and disable unavailable models.
-
 ## Audio
 
-Requested models:
+Requested guest audio models/backends:
 
 ```text
 AC97 · ES1370 · Sound Blaster 16 · HDA · PC Speaker · CoreAudio
 ```
 
-Audio device selection and host audio backend are separate capabilities. CoreAudio is a host backend, not a portable guest device model.
+CoreAudio is a host backend and is available only on compatible macOS builds.
 
-## Low-level channels
+## Low-level interfaces
 
 - QMP: protected Unix socket, named pipe, or loopback TCP.
-- GDB: `-S` plus loopback-only `-gdb` endpoint by default.
-- Serial: socket-backed chardev bridged to a WebSocket terminal.
-- VNC/SPICE: brokered transport with authenticated session binding.
-- VFIO/USB: administrator-only, IOMMU and device-ownership validation.
-
-## Host verification
-
-The agent should run:
-
-```text
-qemu-system-<arch> -accel help
-qemu-system-<arch> -machine help
-qemu-system-<arch> -device help
-qemu-img --version
-```
-
-Results are cached briefly and invalidated when the QEMU binary, host kernel, or platform capability changes.
+- GDB: `-S` and loopback-only `-gdb` by default.
+- Serial/COM: socket-backed `-serial` bridge to a WebSocket terminal.
+- VNC/SPICE: authenticated broker rather than public raw ports.
+- VFIO/USB: administrator-only with IOMMU/device ownership checks.

@@ -2,35 +2,28 @@
 
 Copyright (C) 2026 Extreme QEMU Web Manager contributors.
 
-This project is licensed under the **GNU Affero General Public License, version 3 only (AGPL-3.0-only)**.
+This project is licensed under the **GNU Affero General Public License, version 3 or any later version (AGPL-3.0-or-later)**.
 
-The complete, unmodified text of the GNU Affero General Public License version 3 is included in the repository root as [`LICENSE`](./LICENSE).
+The complete, unmodified license text is included in [`LICENSE`](LICENSE).
 
-The canonical license text is also available from the Free Software Foundation:
+The canonical license is available at <https://www.gnu.org/licenses/agpl-3.0.html>.
 
-<https://www.gnu.org/licenses/agpl-3.0.html>
+## Required source notice
 
-## License notice
+This software can interact with users remotely through a computer network. Under Section 13 of the AGPLv3, a modified network deployment must prominently offer remote users access to the corresponding source code of the exact running version at no charge. Configure the application's Source link to a public archive or repository containing that version, its modifications, and build instructions.
 
-This program is free software: you can redistribute it and/or modify it under the terms of the GNU Affero General Public License version 3 only, as published by the Free Software Foundation.
-
-This program is distributed in the hope that it will be useful, but **WITHOUT ANY WARRANTY**; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for more details.
-
-If this program is operated as a network service, users interacting with it remotely must be offered access to the corresponding source of the version running on that service, as required by Section 13 of the AGPLv3.
-
-## Source offer for network deployments
-
-A network deployment must expose a prominent, no-charge source link in its user interface or another standard/customary copying location. The link must identify the corresponding source for the exact deployed version, including local modifications and build instructions.
-
-Recommended configuration:
+## Standard source header
 
 ```text
-Source code: https://example.invalid/extreme-qemu-web-manager/archive/vX.Y.Z.tar.gz
-License:     https://example.invalid/extreme-qemu-web-manager/blob/vX.Y.Z/LICENSE
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as published
+by the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
 ```
 
-Replace the example URLs with the exact public source location before deployment.
-
-## Third-party software
-
-Third-party dependencies retain their own licenses. Distribute their copyright notices and license texts as required. In particular, QEMU and any separately distributed frontend or console components must not be represented as relicensed under this project license.
+Third-party software remains under its own license. Preserve all upstream copyright and license notices.

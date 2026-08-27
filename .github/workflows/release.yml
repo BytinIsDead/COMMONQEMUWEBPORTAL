@@ -1,6 +1,6 @@
-# Extreme QEMU Web Manager — AGPL-3.0-only
+# Extreme QEMU Web Manager — AGPL-3.0-or-later
 # Copyright (C) 2026 Extreme QEMU Web Manager contributors.
-# Licensed under the GNU Affero General Public License version 3 only.
+# Licensed under the GNU Affero General Public License version 3 or later.
 
 name: Release
 
@@ -13,120 +13,95 @@ permissions:
   contents: write
 
 env:
-  CARGO_TERM_COLOR: always
+  CGO_ENABLED: 0
 
 jobs:
   build:
-    name: Build ${{ matrix.name }}
     strategy:
       fail-fast: false
       matrix:
         include:
-          - name: linux-x86_64
-            runner: ubuntu-24.04
-            target: x86_64-unknown-linux-gnu
-            binary: qemu-web-manager
-          - name: linux-aarch64
-            runner: ubuntu-24.04
-            target: aarch64-unknown-linux-gnu
-            binary: qemu-web-manager
-          - name: windows-x86_64
-            runner: windows-2025
-            target: x86_64-pc-windows-msvc
-            binary: qemu-web-manager.exe
-          - name: macos-x86_64
-            runner: macos-13
-            target: x86_64-apple-darwin
-            binary: qemu-web-manager
-          - name: macos-aarch64
-            runner: macos-14
-            target: aarch64-apple-darwin
-            binary: qemu-web-manager
-          - name: freebsd-x86_64
-            runner: ubuntu-24.04
-            target: x86_64-unknown-freebsd
-            binary: qemu-web-manager
-
-    runs-on: ${{ matrix.runner }}
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.target }}
-      - name: Build frontend
-        working-directory: frontend
-        run: |
-          npm ci --ignore-scripts
-          npm run build
-      - name: Install cross compiler
-        if: matrix.target == 'aarch64-unknown-linux-gnu' || matrix.target == 'x86_64-unknown-freebsd'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu clang
-      - name: Build daemon
-        run: cargo build --release --target ${{ matrix.target }}
-      - name: Package archive
-        shell: bash
-        env:
-          NAME: ${{ matrix.name }}
-          BIN: ${{ matrix.binary }}
-          TARGET: ${{ matrix.target }}
-        run: |
-          set -euo pipefail
-          out="qemu-web-manager-${NAME}"
-          mkdir -p "$out"
-          cp "target/${TARGET}/release/${BIN}" "$out/"
-          cp LICENSE LICENSE.md README.md ARCHITECTURE.md HARDWARE_MATRIX.md "$out/"
-          tar -czf "${out}.tar.gz" "$out" || true
-          if [[ "${BIN}" == *.exe ]]; then
-            7z a "${out}.zip" "$out" >/dev/null
-          else
-            [[ -f "${out}.tar.gz" ]]
-          fi
-      - uses: actions/upload-artifact@v4
-        with:
-          name: qemu-web-manager-${{ matrix.name }}
-          path: |
-            qemu-web-manager-*.tar.gz
-            qemu-web-manager-*.zip
-
-  source:
-    name: Source archive
+          - name: linux-amd64
+            goos: linux
+            goarch: amd64
+            ext: ''
+          - name: linux-arm64
+            goos: linux
+            goarch: arm64
+            ext: ''
+          - name: windows-amd64
+            goos: windows
+            goarch: amd64
+            ext: '.exe'
+          - name: macos-amd64
+            goos: darwin
+            goarch: amd64
+            ext: ''
+          - name: macos-arm64
+            goos: darwin
+            goarch: arm64
+            ext: ''
+          - name: freebsd-amd64
+            goos: freebsd
+            goarch: amd64
+            ext: ''
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Create AGPL source package
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+      - name: Test
+        run: go test ./...
+      - name: Build and package
+        shell: bash
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          EXT: ${{ matrix.ext }}
+          NAME: ${{ matrix.name }}
         run: |
-          git archive --format=tar.gz --prefix=qemu-web-manager-source-AGPLv3/ HEAD > qemu-web-manager-source-AGPLv3.tar.gz
+          set -euo pipefail
+          mkdir -p "dist/qemu-web-manager-${NAME}/web"
+          go build -trimpath -ldflags='-s -w' -o "dist/qemu-web-manager-${NAME}/qemu-web-manager${EXT}" ./cmd/qemu-web-manager
+          cp web/index.html web/style.css web/app.js "dist/qemu-web-manager-${NAME}/web/"
+          cp LICENSE LICENSE.md README.md ARCHITECTURE.md HARDWARE_MATRIX.md "dist/qemu-web-manager-${NAME}/"
+          tar -czf "qemu-web-manager-${NAME}.tar.gz" -C dist "qemu-web-manager-${NAME}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: qemu-web-manager-${{ matrix.name }}
+          path: qemu-web-manager-${{ matrix.name }}.tar.gz
+
+  source:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Create source archive
+        run: git archive --format=tar.gz --prefix=qemu-web-manager-source-AGPLv3/ HEAD > qemu-web-manager-source-AGPLv3.tar.gz
       - uses: actions/upload-artifact@v4
         with:
           name: qemu-web-manager-source
           path: qemu-web-manager-source-AGPLv3.tar.gz
 
   release:
-    name: Publish release
     needs: [build, source]
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/download-artifact@v4
         with:
           path: artifacts
-      - name: Flatten artifacts and create checksums
+      - name: Prepare assets and checksums
         run: |
-          find artifacts -type f \( -name '*.tar.gz' -o -name '*.zip' \) -exec cp {} . \;
-          find . -maxdepth 1 -type f \( -name 'qemu-web-manager-*.tar.gz' -o -name 'qemu-web-manager-*.zip' \) -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS
+          find artifacts -type f -name '*.tar.gz' -exec cp {} . \;
+          sha256sum qemu-web-manager-*.tar.gz qemu-web-manager-source-AGPLv3.tar.gz > SHA256SUMS
       - uses: softprops/action-gh-release@v2
         with:
           generate_release_notes: true
           files: |
             qemu-web-manager-*.tar.gz
-            qemu-web-manager-*.zip
             qemu-web-manager-source-AGPLv3.tar.gz
             SHA256SUMS

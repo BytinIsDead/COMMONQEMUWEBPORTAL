@@ -3,77 +3,77 @@
 ## Runtime topology
 
 ```text
-Browser ── HTTPS/WSS ── Axum API ── MachineManager ── qemu-system-* process
-                                      ├─ QMP broker
-                                      ├─ serial/VNC proxy
-                                      ├─ telemetry sampler
-                                      └─ audit/policy boundary
+Browser (HTML/CSS/ES6) ── HTTPS/WSS ── Go HTTP daemon ── qemu-system-* child
+                                          ├─ lifecycle supervisor
+                                          ├─ typed CLI generator
+                                          ├─ QMP policy/client
+                                          ├─ serial/VNC WebSocket proxy
+                                          └─ event hub / telemetry
 ```
 
-The browser never connects directly to QMP, VNC, SPICE, or GDB. The daemon authenticates and authorizes every channel, then proxies only the selected machine transport.
+The daemon is intentionally stateless at the HTTP layer. A production deployment should add durable configuration, authentication, RBAC, and append-only audit storage around the in-memory reference manager.
 
-## State reconciliation
+## Process lifecycle
 
-A machine has desired configuration and observed runtime state. Creation validates the typed configuration. Start generates argv, launches the child, and confirms readiness through QMP. Process exit, QMP events, and host capability changes update observed state and are broadcast to WebSocket subscribers.
-
-## Process management
-
-- Launch with `tokio::process::Command` and an argv vector; never construct a shell command.
-- Capture stderr into structured logs.
-- Track PID and lifecycle state.
-- Apply startup and shutdown timeouts.
-- Kill the process tree on termination.
-- Restart only through an explicit policy.
-- Confirm `query-status` after launch.
+1. Validate VM configuration and host capability.
+2. Resolve the architecture-specific `qemu-system-*` binary.
+3. Generate an argv vector without shell evaluation.
+4. Launch with `exec.CommandContext`.
+5. Connect to QMP and confirm readiness.
+6. Broadcast state and telemetry events.
+7. Capture process exit and reconcile observed state.
+8. Stop through QMP when available, then use a bounded process termination fallback.
 
 ## QMP event loop
 
-QMP uses a reader task and a command task. The reader classifies the greeting, responses, and asynchronous events. Each command receives a unique correlation ID and a timeout. Events are published through bounded broadcast channels. Reconnect logic re-negotiates capabilities and rehydrates status.
+The production QMP client uses a persistent Unix socket, Windows named pipe, or protected loopback TCP connection. A reader goroutine classifies the greeting, correlated responses, and asynchronous events. A command writer assigns unique IDs and waits on a bounded response map.
 
 ```text
-socket read → JSON frame → response map / event bus
-command API → authorization → correlation ID → socket write
+command request → authorization → ID assignment → JSON line write
+socket read → JSON decode → response waiter OR event hub
+EOF/error → reconnect policy → status rehydration
 ```
 
-Raw QMP is not unrestricted by default. Read-only queries and lifecycle commands are allowlisted; destructive or device-mutating commands require a privileged policy.
+Raw commands must be separately authorized. The reference implementation allows safe status and lifecycle commands only.
 
-## WebSocket channels
+## WebSocket proxies
 
-`/api/v1/machines/{id}/events` streams JSON state and telemetry. Serial and VNC endpoints use bounded binary frames and enforce machine/session ownership. Backpressure, idle timeouts, origin validation, and maximum frame sizes are mandatory.
+- `/api/v1/machines/{id}/events`: JSON lifecycle/telemetry events.
+- `/api/v1/machines/{id}/serial`: authenticated serial byte proxy.
+- `/api/v1/machines/{id}/vnc`: authenticated VNC transport boundary.
 
-## CLI generation
+Never expose QMP, VNC, SPICE, or GDB directly to the public network. Enforce Origin checks, session ownership, frame limits, idle timeouts, backpressure, and audit records.
 
-The UI submits a typed intermediate representation. The generator performs schema, architecture, host-capability, device-conflict, security, and QEMU-version validation. It emits `Vec<String>` argv values. Shell quoting is only used for display in the UI, never for execution.
+## CLI generation engine
 
-Mappings include:
+The REST payload is a typed intermediate representation. Validation checks architecture, acceleration, device compatibility, path policy, resource limits, and privilege requirements. The generator emits `[]string` argv values.
 
-- architecture → `qemu-system-*`
-- acceleration → `-accel`
-- CPU model and flags → `-cpu`
-- vCPU count → `-smp`
-- memory → `-m`
-- QMP → `-qmp`
-- GDB → `-S` and protected `-gdb`
-- storage and buses → `-drive` or modern `-blockdev`/`-device`
-- serial → protected socket-backed `-serial`
-- passthrough → policy-gated `vfio-pci` and `usb-host`
+Mappings:
+
+```text
+architecture → qemu-system-* 
+acceleration → -accel
+CPU → -cpu
+vcpus → -smp
+memory → -m
+machine type → -M
+QMP → -qmp
+GDB → -S and protected -gdb
+storage → -drive or blockdev/device graph
+serial → socket-backed -serial
+USB/VFIO → policy-gated device arguments
+```
+
+User-controlled paths and flags must never be passed through a shell. Modern production implementations should prefer `-blockdev` graphs over legacy `-drive` strings for hotplug, snapshots, and node identity.
+
+## Frontend
+
+The frontend is pure HTML, CSS, and JavaScript. It uses an inline SVG symbol sprite and native WebSocket/Fetch APIs. noVNC and xterm.js may be vendored as JavaScript assets when their licenses and source notices are included; no third-party frontend dependency is required for the dashboard shell.
 
 ## Security boundaries
 
-The daemon should be deployed behind TLS and an identity provider. Host enrollment uses short-lived tokens and mutual TLS. Disk paths are allowlisted. VFIO and USB operations require administrator approval. GDB is loopback-only unless placed behind an authenticated tunnel.
+Use TLS, OIDC/MFA, tenant-scoped authorization, host enrollment certificates, QEMU least privilege, seccomp/AppArmor/SELinux where available, disk path allowlists, IOMMU policy, and quotas. GDB and raw QMP are critical controls and should require an administrator role plus a short-lived session.
 
-## API shape
+## Section 13 compliance
 
-```text
-GET  /api/v1/health
-GET  /api/v1/machines
-POST /api/v1/machines
-POST /api/v1/machines/{id}/start
-POST /api/v1/machines/{id}/stop
-POST /api/v1/machines/{id}/qmp
-GET  /api/v1/machines/{id}/events   (WebSocket)
-```
-
-## AGPLv3 network compliance
-
-The deployed UI must provide a prominent Source link to the corresponding source of the exact running version. Release archives include the source package and required documentation.
+The deployed UI must include a prominent Source link to the corresponding source of the exact running version at no charge, including modifications, build scripts, documentation, and generated frontend assets.
