@@ -19,8 +19,9 @@
 #include <ws2tcpip.h>
 #include <windows.h>
 #include <process.h>
-#pragma comment(lib, "ws2_32.lib")
 
+/* ws2_32 must be linked explicitly; the Makefile dies so with LDFLAGS=-lws2_32
+ * for MinGW, or the MSVC project links ws2_32.lib. */
 int qwm_sock_startup(void) {
     WSADATA wsa; return WSAStartup(MAKEWORD(2, 2), &wsa) == 0 ? 0 : -1;
 }

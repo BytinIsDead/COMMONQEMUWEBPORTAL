@@ -44,23 +44,29 @@ jobs:
           - name: linux-x86_64
             runner: ubuntu-24.04
             cc: gcc
+            ldflags: ''
           - name: linux-arm64
             runner: ubuntu-24.04
             cc: aarch64-linux-gnu-gcc
+            ldflags: ''
           - name: windows-x86_64
             runner: ubuntu-24.04
             cc: x86_64-w64-mingw32-gcc
+            ldflags: '-lws2_32'
           - name: macos-x86_64
             runner: macos-14
             cc: clang
             cflags: '-std=c11 -O2 -Wall -Wextra -Wpedantic -D_POSIX_C_SOURCE=200809L -arch x86_64'
+            ldflags: '-arch x86_64'
           - name: macos-arm64
             runner: macos-14
             cc: clang
             cflags: '-std=c11 -O2 -Wall -Wextra -Wpedantic -D_POSIX_C_SOURCE=200809L'
+            ldflags: ''
           - name: freebsd-x86_64
             runner: ubuntu-24.04
             cc: clang
+            ldflags: ''
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
@@ -73,9 +79,10 @@ jobs:
         env:
           CC: ${{ matrix.cc }}
           QWM_CFLAGS: ${{ matrix.cflags || '-std=c11 -O2 -Wall -Wextra -Wpedantic -D_POSIX_C_SOURCE=200809L' }}
+          QWM_LDFLAGS: ${{ matrix.ldflags || '' }}
         run: |
           make clean || true
-          make CFLAGS="$QWM_CFLAGS"
+          make CFLAGS="$QWM_CFLAGS" LDFLAGS="$QWM_LDFLAGS"
       - name: Package
         shell: bash
         run: |

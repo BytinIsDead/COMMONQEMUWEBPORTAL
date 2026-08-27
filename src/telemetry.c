@@ -6,6 +6,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#ifdef __linux__
 static unsigned long long parse_ull(FILE *f, const char *label) {
     char key[64]; unsigned long long v; char unit[16];
     rewind(f);
@@ -13,6 +14,7 @@ static unsigned long long parse_ull(FILE *f, const char *label) {
         if (!strcmp(key, label)) return v;
     return 0;
 }
+#endif
 
 void telemetry_init(void) {}
 
