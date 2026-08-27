@@ -12,14 +12,10 @@
  */
 #include "server.h"
 #include "control.h"
-#include <arpa/inet.h>
-#include <errno.h>
-#include <netinet/in.h>
+#include "platform.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/socket.h>
-#include <unistd.h>
 
 #define MAX_BODY 8192
 #define MAX_OUT  8192
@@ -32,14 +28,14 @@ static const char *mime(const char *p) {
     if (e && !strcmp(e, ".json")) return "application/json";
     return "text/html";
 }
-static void response(int fd, int code, const char *type, const void *body, size_t len) {
+static void response(qwm_socket fd, int code, const char *type, const void *body, size_t len) {
     char h[512]; int n = snprintf(h, sizeof(h),
         "HTTP/1.1 %d OK\r\nContent-Type: %s\r\nContent-Length: %zu\r\n"
         "Connection: close\r\nX-Content-Type-Options: nosniff\r\n"
         "Access-Control-Allow-Origin: *\r\n\r\n", code, type, len);
-    send(fd, h, (size_t)n, 0); if (body && len) send(fd, body, len, 0);
+    qwm_send(fd, h, (size_t)n); if (body && len) qwm_send(fd, body, len);
 }
-static int send_text(int fd, const char *body) { size_t n = strlen(body); response(fd, 200, "application/json", body, n); return 0; }
+static int send_text(qwm_socket fd, const char *body) { size_t n = strlen(body); response(fd, 200, "application/json", body, n); return 0; }
 
 /* Extract the substring between /api/v1/ and the next '/'. */
 static int api_segment(const char *path, const char *prefix, char *seg, size_t n) {
@@ -52,7 +48,7 @@ static int api_segment(const char *path, const char *prefix, char *seg, size_t n
     return (int)i;
 }
 
-static void handle_api(int fd, const char *path) {
+static void handle_api(qwm_socket fd, const char *path) {
     char out[MAX_OUT];
     char a[256] = {0};    /* primary subresource, e.g. machine id */
     char b[256] = {0};    /* action or query param */
@@ -79,13 +75,12 @@ static void handle_api(int fd, const char *path) {
         const char *execute_end = execute ? strchr(execute + 8, '&') : NULL;
         if (!execute) { ctl_qmp(m, "query-status", "{}", out, sizeof(out)); send_text(fd, out); return; }
         size_t elen = execute_end ? (size_t)(execute_end - (execute + 8)) : strlen(execute + 8);
-        if (elen >= sizeof(b)) elen = sizeof(b) - 1;
-        char ex[256]; memcpy(ex, execute + 8, elen); ex[elen] = 0;
+        char ex[256]; if (elen >= sizeof(ex)) elen = sizeof(ex) - 1;
+        memcpy(ex, execute + 8, elen); ex[elen] = 0;
         if (ctl_qmp(m, ex, "{}", out, sizeof(out)) < 0) { response(fd, 500, "application/json", "{\"error\":\"qmp failed\"}", 20); return; }
         send_text(fd, out); return;
     }
     if (strstr(path, "/api/v1/snapshot")) {
-        /* /api/v1/snapshot/<machine>/<device>/<name> */
         if (sscanf(path, "/api/v1/snapshot/%255[^/]/%255[^/]/%255[^/]", m, a, b) == 3) {
             if (ctl_snapshot(m, a, b, out, sizeof(out)) < 0) { response(fd, 500, "application/json", "{\"error\":\"snapshot failed\"}", 26); return; }
             send_text(fd, out); return;
@@ -101,7 +96,6 @@ static void handle_api(int fd, const char *path) {
         response(fd, 400, "application/json", "{\"error\":\"balloon path invalid\"}", 29); return;
     }
     if (strstr(path, "/api/v1/usb")) {
-        /* /api/v1/usb/hotplug/<machine>/<vendor>/<product> or /.../unplug/<machine>/<id> */
         if (sscanf(path, "/api/v1/usb/hotplug/%255[^/]/%255[^/]/%255[^/]", m, a, b) == 3) {
             if (ctl_usb_hotplug(m, a, b, out, sizeof(out)) < 0) { response(fd, 500, "application/json", "{\"error\":\"usb hotplug failed\"}", 27); return; }
             send_text(fd, out); return;
@@ -111,7 +105,7 @@ static void handle_api(int fd, const char *path) {
     response(fd, 404, "application/json", "{\"error\":\"not found\"}", 18);
 }
 
-static void serve(int fd, const char *root, const char *request) {
+static void serve(qwm_socket fd, const char *root, const char *request) {
     char path[1024], full[2048];
     if (sscanf(request, "GET %1023s", path) != 1) { response(fd, 400, "text/plain", "bad request", 11); return; }
     if (!strncmp(path, "/api/", 5)) { handle_api(fd, path); return; }
@@ -128,18 +122,15 @@ static void serve(int fd, const char *root, const char *request) {
 }
 
 int server_run(int port, const char *public_dir) {
-    int s = socket(AF_INET, SOCK_STREAM, 0);
-    if (s < 0) return 1;
-    int one = 1; setsockopt(s, SOL_SOCKET, SO_REUSEADDR, &one, sizeof(one));
-    struct sockaddr_in a; memset(&a, 0, sizeof(a));
-    a.sin_family = AF_INET; a.sin_addr.s_addr = htonl(INADDR_ANY); a.sin_port = htons((unsigned short)port);
-    if (bind(s, (struct sockaddr *)&a, sizeof(a)) < 0 || listen(s, 32) < 0) { close(s); return 1; }
+    if (qwm_sock_startup() < 0) return 1;
+    qwm_socket s = qwm_tcp_listen((unsigned int)port);
+    if (s == (qwm_socket)-1) { qwm_sock_cleanup(); return 1; }
     for (;;) {
-        int c = accept(s, NULL, NULL);
-        if (c < 0) { if (errno == EINTR) continue; break; }
-        char req[MAX_BODY]; ssize_t r = recv(c, req, sizeof(req) - 1, 0);
+        qwm_socket c = qwm_tcp_accept(s);
+        if (c == (qwm_socket)-1) continue;
+        char req[MAX_BODY]; int r = qwm_recv(c, req, sizeof(req) - 1);
         if (r > 0) { req[r] = 0; serve(c, public_dir, req); }
-        close(c);
+        qwm_sock_close(c);
     }
-    close(s); return 0;
+    qwm_sock_close(s); qwm_sock_cleanup(); return 0;
 }

@@ -51,19 +51,19 @@ jobs:
             runner: ubuntu-24.04
             cc: x86_64-w64-mingw32-gcc
           - name: macos-x86_64
-            runner: macos-13
+            runner: macos-14
             cc: clang
+            cflags: '-std=c11 -O2 -Wall -Wextra -Wpedantic -D_POSIX_C_SOURCE=200809L -arch x86_64'
           - name: macos-arm64
             runner: macos-14
             cc: clang
+            cflags: '-std=c11 -O2 -Wall -Wextra -Wpedantic -D_POSIX_C_SOURCE=200809L'
           - name: freebsd-x86_64
             runner: ubuntu-24.04
             cc: clang
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
       - name: Install cross toolchains
         if: runner.os == 'Linux'
         run: |
@@ -72,9 +72,10 @@ jobs:
       - name: Build
         env:
           CC: ${{ matrix.cc }}
+          QWM_CFLAGS: ${{ matrix.cflags || '-std=c11 -O2 -Wall -Wextra -Wpedantic -D_POSIX_C_SOURCE=200809L' }}
         run: |
           make clean || true
-          make CFLAGS='-std=c11 -O2 -Wall -Wextra -Wpedantic -D_POSIX_C_SOURCE=200809L'
+          make CFLAGS="$QWM_CFLAGS"
       - name: Package
         shell: bash
         run: |

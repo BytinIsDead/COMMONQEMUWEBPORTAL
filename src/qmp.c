@@ -11,11 +11,9 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See LICENSE.
  */
 #include "qmp.h"
+#include "platform.h"
 #include <stdio.h>
 #include <string.h>
-#include <unistd.h>
-#include <sys/socket.h>
-#include <sys/un.h>
 
 static int allowed(const char *s) {
     static const char *ok[] = {
@@ -30,12 +28,11 @@ static int allowed(const char *s) {
 int qwm_qmp_connect(qwm_qmp *q, const char *path) {
     if (!q || !path) return -1;
     memset(q, 0, sizeof(*q));
-    q->fd = socket(AF_UNIX, SOCK_STREAM, 0);
-    if (q->fd < 0) return -1;
-    struct sockaddr_un a; memset(&a, 0, sizeof(a));
-    a.sun_family = AF_UNIX;
-    strncpy(a.sun_path, path, sizeof(a.sun_path) - 1);
-    if (connect(q->fd, (struct sockaddr *)&a, sizeof(a)) < 0) { close(q->fd); q->fd = -1; return -1; }
+    q->fd = -1;
+    if (qwm_sock_startup() < 0) return -1;
+    qwm_socket s;
+    if (qwm_unix_connect(path, &s) < 0) return -1;
+    q->fd = s;
     strncpy(q->socket_path, path, sizeof(q->socket_path) - 1);
     return 0;
 }
@@ -43,10 +40,10 @@ int qwm_qmp_connect(qwm_qmp *q, const char *path) {
 int qwm_qmp_send_raw(qwm_qmp *q, const char *json, char *response, size_t size) {
     if (!q || q->fd < 0 || !json || !response || size < 2) return -1;
     size_t len = strlen(json);
-    if (write(q->fd, json, len) != (ssize_t)len || write(q->fd, "\n", 1) != 1) return -1;
+    if (qwm_send(q->fd, json, len) < 0 || qwm_send(q->fd, "\n", 1) < 0) return -1;
     size_t used = 0;
     while (used + 1 < size) {
-        ssize_t n = read(q->fd, response + used, size - used - 1);
+        int n = qwm_recv(q->fd, response + used, size - used - 1);
         if (n <= 0) break;
         used += (size_t)n;
         if (response[used - 1] == '\n') break;
@@ -62,7 +59,7 @@ int qwm_qmp_command(qwm_qmp *q, const char *execute, const char *args, char *res
     return qwm_qmp_send_raw(q, json, response, size);
 }
 
-void qwm_qmp_close(qwm_qmp *q) { if (q && q->fd >= 0) { close(q->fd); q->fd = -1; } }
+void qwm_qmp_close(qwm_qmp *q) { if (q && q->fd >= 0) { qwm_sock_close(q->fd); q->fd = -1; } }
 
 int qwm_qmp_snapshot(qwm_qmp *q, const char *device, const char *name, char *response, size_t n) {
     char args[1024];

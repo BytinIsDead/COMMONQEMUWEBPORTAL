@@ -39,8 +39,10 @@ int ctl_telemetry(char *out, size_t n) {
 /* Minimal single-VM launcher/stopper using QMP-optional lifecycle. The
  * process is recorded in a fixed path as PID for a control-plane reference.
  * Production hosts replace this with a per-user supervisor and an audit log. */
+#ifndef _WIN32
 static const char *pid_path = "/tmp/qwm.pid";
 static int write_pid(pid_t pid) { FILE *f = fopen(pid_path, "w"); if (!f) return -1; int rc = fprintf(f, "%ld", (long)pid); fclose(f); return rc < 0 ? -1 : 0; }
+#endif
 
 int ctl_start(const char *machine_json, char *out, size_t n) {
     (void)machine_json;

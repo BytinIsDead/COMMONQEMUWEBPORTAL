@@ -1,20 +1,13 @@
 /* Extreme QEMU Web Manager — AGPL-3.0-or-later
  * Copyright (C) 2026 Extreme QEMU Web Manager contributors.
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as published
- * by the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See LICENSE.
+ * Licensed under the GNU Affero General Public License version 3 or later.
  */
 #ifndef QWM_QMP_H
 #define QWM_QMP_H
+#include "platform.h"
 #include <stddef.h>
 
-typedef struct { int fd; char socket_path[512]; } qwm_qmp;
+typedef struct { qwm_socket fd; char socket_path[512]; } qwm_qmp;
 
 int  qwm_qmp_connect(qwm_qmp *qmp, const char *path);
 int  qwm_qmp_send_raw(qwm_qmp *qmp, const char *json, char *response, size_t response_size);

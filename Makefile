@@ -6,7 +6,7 @@ CC      ?= cc
 CFLAGS  ?= -std=c11 -O2 -Wall -Wextra -Wpedantic -D_POSIX_C_SOURCE=200809L
 LDFLAGS ?=
 TARGET  := qemu-web-manager
-SOURCES := src/main.c src/server.c src/control.c src/qmp.c src/cli_builder.c src/telemetry.c
+SOURCES := src/main.c src/server.c src/control.c src/qmp.c src/cli_builder.c src/telemetry.c src/platform.c
 OBJECTS := $(SOURCES:.c=.o)
 
 .PHONY: all clean test format package windows macos freebsd
